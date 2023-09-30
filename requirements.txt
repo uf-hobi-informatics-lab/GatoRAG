@@ -1,0 +1,9 @@
+torch
+sentence-transformers
+pytrec_eval
+faiss_cpu
+datasets
+transformers
+InstructorEmbedding
+splade @ git+https://github.com/naver/splade@main
+elasticsearch @ git+https://github.com/elastic/elasticsearch-py.git@main
