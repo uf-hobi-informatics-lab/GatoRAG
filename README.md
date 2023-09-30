@@ -5,8 +5,9 @@ Use GatortronGPT for Retrieval Augmented Generation
 ### Out-of-box models
 - check MTEB leader board for the latest rank https://huggingface.co/spaces/mteb/leaderboard
 - models for testing
-    - sionic-ai/sionic-ai-v2
+    - sionic-ai/sionic-ai-v2 (TBD)
     - BAAI/bge-base-en-v1.5
+    - Instructor-large
 ### Gatortron based embedding model
 - TODO: train gatortron BERT to perform embedding task
 
