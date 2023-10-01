@@ -1,4 +1,4 @@
-# GatorRAG
+# GatoRAG
 Use GatortronGPT for Retrieval Augmented Generation
 
 ## Embedding models

@@ -12,16 +12,29 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 class BgeEncoder:
     PROMPT = "Represent this sentence for searching relevant passages:"
 
-    def __init__(
-        self,
-        model_name="BAAI/bge-base-en",
-    ):
+    def __init__(self, model_name="BAAI/bge-base-en", do_norm=False):
+        self.do_norm = do_norm
         self.model = SentenceTransformer(model_name, device=DEVICE)
 
     def get_bge_embedding_single_sample(self, text4emb, is_qurey=False):
         if is_qurey:
             text4emb = " ".join([self.PROMPT, text4emb])
-        return self.model.encode(text4emb, normalize_embeddings=False).tolist()
+        return self.model.encode(text4emb, normalize_embeddings=self.do_norm).tolist()
+
+    def get_bge_embedding_batch(self, queries=None, is_qurey=False):
+        if queries is None:
+            raise ValueError("query cannot be None")
+
+        if not isinstance(queries, list):
+            raise ValueError("queries must be list of strings")
+
+        if DEVICE != "cuda":
+            warnings.warn("No CUDA available, processing batch will be slower than processing single sample.")
+
+        if is_qurey:
+            queries = [" ".join([self.PROMPT, query]) for query in queries]
+
+        return self.model.encode(queries, normalize_embeddings=self.do_norm).tolist()
 
 
 class InstructorEncoder:
@@ -35,12 +48,8 @@ class InstructorEncoder:
         instruction_query=None,
     ) -> None:
         self.model = INSTRUCTOR(model_name)
-        self.intruction_context = (
-            instruction_context if instruction_context else self.INSTRUCT_CONTEXT
-        )
-        self.instruction_query = (
-            instruction_query if instruction_query else self.INSTRUCT_QUERY
-        )
+        self.intruction_context = instruction_context if instruction_context else self.INSTRUCT_CONTEXT
+        self.instruction_query = instruction_query if instruction_query else self.INSTRUCT_QUERY
 
     def get_instructor_embeddings_single_sample(self, query="", is_query=True):
         instruction = self.instruction_query if is_query else self.intruction_context
@@ -55,9 +64,7 @@ class InstructorEncoder:
             raise ValueError("queries must be list of strings")
 
         if DEVICE != "cuda":
-            warnings.warn(
-                "No CUDA available, processing batch will be slower than processing single sample."
-            )
+            warnings.warn("No CUDA available, processing batch will be slower than processing single sample.")
 
         instruction = self.instruction_query if is_query else self.intruction_context
         model_inputs = [[instruction, query] for query in queries]
@@ -65,9 +72,7 @@ class InstructorEncoder:
 
 
 class SpladeEncoder:
-    def __init__(
-        self, splade_name="naver/splade-cocondenser-ensembledistil", max_len=512
-    ):
+    def __init__(self, splade_name="naver/splade-cocondenser-ensembledistil", max_len=512):
         self.model = Splade(splade_name, agg="max")
         self.tokenizer = AutoTokenizer.from_pretrained(splade_name)
         self.max_len = max_len
@@ -81,14 +86,8 @@ class SpladeEncoder:
             else:
                 sparse_embeddings = self.model(q_kwargs=model_input)["q_rep"]
 
-        cols = [
-            embedding.nonzero().squeeze().cpu().tolist()
-            for embedding in sparse_embeddings
-        ]
-        weights = [
-            embedding[cols[idx]].cpu().tolist()
-            for idx, embedding in enumerate(sparse_embeddings)
-        ]
+        cols = [embedding.nonzero().squeeze().cpu().tolist() for embedding in sparse_embeddings]
+        weights = [embedding[cols[idx]].cpu().tolist() for idx, embedding in enumerate(sparse_embeddings)]
 
         return cols, weights
 
@@ -103,10 +102,7 @@ class SpladeEncoder:
 
         cols, weights = self._get_feature_embeddings(model_input, is_query)
 
-        return [
-            {f"feature_{c}": w for c, w in zip(col, weight)}
-            for col, weight in zip(cols, weights)
-        ][0]
+        return [{f"feature_{c}": w for c, w in zip(col, weight)} for col, weight in zip(cols, weights)][0]
 
     def get_splade_features_batch(self, queries=None, is_query=False):
         if queries is None:
@@ -116,9 +112,7 @@ class SpladeEncoder:
             raise ValueError("queries must be list of strings")
 
         if DEVICE != "cuda":
-            warnings.warn(
-                "No CUDA available, processing batch will be slower than processing single sample."
-            )
+            warnings.warn("No CUDA available, processing batch will be slower than processing single sample.")
 
         model_input = self.tokenizer(
             queries,
@@ -130,7 +124,4 @@ class SpladeEncoder:
 
         cols, weights = self._get_feature_embeddings(model_input, is_query)
 
-        return [
-            {f"feature_{c}": w for c, w in zip(col, weight)}
-            for col, weight in zip(cols, weights)
-        ]
+        return [{f"feature_{c}": w for c, w in zip(col, weight)} for col, weight in zip(cols, weights)]

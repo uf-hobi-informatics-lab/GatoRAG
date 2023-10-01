@@ -6,7 +6,6 @@ from typing import Dict, List, Tuple
 import tqdm
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import streaming_bulk
-
 from embedding import BgeEncoder, InstructorEncoder, SpladeEncoder
 
 
@@ -15,30 +14,15 @@ class ElasticSearchEngine:
         self,
         index_name: str,
         es_client: Elasticsearch = None,
-        keys: Dict[str, str] = {"title": "title", "body": "txt"},
-        batch_size: int = 128,
         sleep_for: int = 2,
         splade: str = "",
-        sentence_transformer: str = "",
         instructor: str = "",
-    ) -> None:
+        bge: str = "",
+    ):
         self.results = {}
-        self.batch_size = batch_size
         self.sleep_for = sleep_for
-        self.text_key = keys["body"]
-        self.title_key = keys["title"]
         self.splade = SpladeEncoder(splade_name=splade) if splade else SpladeEncoder()
-        self.sentence_transformer = (
-            SentenceTransformerEncoder(model_name=sentence_transformer)
-            if sentence_transformer
-            else SentenceTransformerEncoder()
-        )
-        self.instructor = (
-            InstructorEncoder(model_name=instructor)
-            if instructor
-            else InstructorEncoder()
-        )
-        self.gte = GteEncoder()
+        self.instructor = InstructorEncoder(model_name=instructor) if instructor else InstructorEncoder()
         self.bge = BgeEncoder()
 
         # create elastic search engine
@@ -47,23 +31,19 @@ class ElasticSearchEngine:
         self.es = es_client
         if not self.es:
             warnings.warn(
-                "elasticsearch client is not created, consider to call set_clinet method."
+                "Elasticsearch client is None." "Use `ElasticSearchEngine.set_clinet` method to setup client"
             )
 
     def set_client(self, elastic_connect_info: Dict[str, str]):
         self.es = Elasticsearch(**elastic_connect_info)
         if not self.es.ping():
-            raise RuntimeError(
-                "Connect to elasticsearch failed. Check elasticsearch connect information?"
-            )
+            raise RuntimeError("Connect to elasticsearch failed. Check elasticsearch connect information?")
 
     def search(self, queries, top_k, *args, **kwargs):
         query_ids = list(queries.keys())
         for query_id in query_ids:
             query = queries[query_id]
-            result = self.customized_search(
-                text=query, top_hits=top_k + 1, qtype=kwargs.get("qtype")
-            )
+            result = self.customized_search(text=query, top_hits=top_k + 1, qtype=kwargs.get("qtype"))
             scores = {}
             for corpus_id, score in result["hits"]:
                 if corpus_id != query_id:  # query doesnt return in results
@@ -94,9 +74,7 @@ class ElasticSearchEngine:
         self.create_index()
 
     def create_index(self):
-        logging.info(
-            "Creating fresh Elasticsearch-Index named - {}".format(self.index_name)
-        )
+        logging.info("Creating fresh Elasticsearch-Index named - {}".format(self.index_name))
         try:
             mapping = {
                 "mappings": {
@@ -156,9 +134,7 @@ class ElasticSearchEngine:
             }
             self.es.indices.create(index=self.index_name, body=mapping, ignore=[400])
         except Exception as e:
-            logging.error(
-                "Unable to create Index in Elastic Search. Reason: {}".format(e)
-            )
+            logging.error("Unable to create Index in Elastic Search. Reason: {}".format(e))
 
     def bulk_add_to_index(self, generate_actions, progress):
         """Bulk indexing to elastic search using generator actions
@@ -167,45 +143,27 @@ class ElasticSearchEngine:
             generate_actions (generator function): generator function must be provided
             progress (tqdm.tqdm): tqdm progress_bar
         """
-        for ok, action in streaming_bulk(
-            client=self.es, index=self.index_name, actions=generate_actions
-        ):
+        for ok, action in streaming_bulk(client=self.es, index=self.index_name, actions=generate_actions):
             if not ok:
-                print(
-                    "Unable to index {}: {}".format(
-                        action["index"]["_id"], action["index"]["error"]
-                    )
-                )
+                print("Unable to index {}: {}".format(action["index"]["_id"], action["index"]["error"]))
             progress.update()
         progress.close()
 
     def delete_index(self):
-        logging.info(
-            "Deleting previous Elasticsearch-Index named - {}".format(self.index_name)
-        )
+        logging.info("Deleting previous Elasticsearch-Index named - {}".format(self.index_name))
         try:
-            self.es.indices.delete(
-                index=self.index_name, ignore=[400, 404]
-            )  # 404: IndexDoesntExistException
+            self.es.indices.delete(index=self.index_name, ignore=[400, 404])  # 404: IndexDoesntExistException
         except Exception as e:
-            logging.error(
-                "Unable to create Index in Elastic Search. Reason: {}".format(e)
-            )
-
-    def generate_actions(
-        self, dictionary: Dict[str, Dict[str, str]], update: bool = False
-    ):
+            logging.error("Unable to create Index in Elastic Search. Reason: {}".format(e))
+=
+    def generate_actions(self, dictionary: Dict[str, Dict[str, str]], update: bool = False):
         """Iterator function for efficient addition to Elasticsearch
         Ref: https://stackoverflow.com/questions/35182403/bulk-update-with-pythons-elasticsearch
         """
         for _id, value in dictionary.items():
             text = value[self.text_key]
-            sbe = self.sentence_transformer.get_sentence_transformer_embeddings_single_sample(
-                query=text
-            )
-            inse = self.instructor.get_instructor_embeddings_single_sample(
-                query=text, is_query=False
-            )
+            sbe = self.sentence_transformer.get_sentence_transformer_embeddings_single_sample(query=text)
+            inse = self.instructor.get_instructor_embeddings_single_sample(query=text, is_query=False)
             spe = self.splade.get_splade_features_single_sample(query=text)
             gte_emb = self.gte.get_sentence_transformer_embeddings_single_sample(text)
             bge_emb = self.bge.get_bge_embedding_single_sample(text, is_qurey=False)
@@ -246,15 +204,11 @@ class ElasticSearchEngine:
         # Check 1: Must not contain the characters ===> #:\/*?"<>|,
         for char in '#:\/*?"<>|,':
             if char in index_name:
-                raise ValueError(
-                    'Invalid Elasticsearch Index, must not contain the characters ===> #:\/*?"<>|,'
-                )
+                raise ValueError('Invalid Elasticsearch Index, must not contain the characters ===> #:\/*?"<>|,')
 
         # Check 2: Must not start with characters ===> _-+
         if index_name.startswith(("_", "-", "+")):
-            raise ValueError(
-                "Invalid Elasticsearch Index, must not start with characters ===> _ or - or +"
-            )
+            raise ValueError("Invalid Elasticsearch Index, must not start with characters ===> _ or - or +")
 
         # Check 3: must not be . or ..
         if index_name in [".", ".."]:
@@ -264,9 +218,7 @@ class ElasticSearchEngine:
         if not index_name.islower():
             raise ValueError("Invalid Elasticsearch Index, must be lowercase")
 
-    def hit_template(
-        self, es_res: Dict[str, object], hits: List[Tuple[str, float]]
-    ) -> Dict[str, object]:
+    def hit_template(self, es_res: Dict[str, object], hits: List[Tuple[str, float]]) -> Dict[str, object]:
         """Hit output results template
 
         Args:
@@ -286,16 +238,10 @@ class ElasticSearchEngine:
         }
         return result
 
-    def customized_search(
-        self, text: str, top_hits: int, skip: int = 0, qtype: int = 0
-    ) -> Dict[str, object]:
+    def customized_search(self, text: str, top_hits: int, skip: int = 0, qtype: int = 0) -> Dict[str, object]:
         if qtype > 1:
-            st_emb = self.sentence_transformer.get_sentence_transformer_embeddings_single_sample(
-                query=text
-            )
-            ins_emb = self.instructor.get_instructor_embeddings_single_sample(
-                query=text, is_query=True
-            )
+            st_emb = self.sentence_transformer.get_sentence_transformer_embeddings_single_sample(query=text)
+            ins_emb = self.instructor.get_instructor_embeddings_single_sample(query=text, is_query=True)
             gte_emb = self.gte.get_sentence_transformer_embeddings_single_sample(text)
             bge_emb = self.bge.get_bge_embedding_single_sample(text, is_qurey=True)
             sparse_query = [
@@ -306,9 +252,7 @@ class ElasticSearchEngine:
                         "boost": v,
                     }
                 }
-                for k, v in self.splade.get_splade_features_single_sample(
-                    query=text
-                ).items()
+                for k, v in self.splade.get_splade_features_single_sample(query=text).items()
             ]
             sparse_query_bm25 = [
                 {"match": {self.text_key: text}},
