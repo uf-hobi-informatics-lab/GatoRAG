@@ -29,5 +29,5 @@ Use GatortronGPT for Retrieval Augmented Generation
 - use a separate tmux env
 - `docker pull docker.elastic.co/kibana/kibana:8.8.2`
 - `docker run --name kib-01 --net elastic -p 5601:5601 docker.elastic.co/kibana/kibana:8.8.2`
-### Index for hybrid search
-### qurey using hybrid search
+### Index and qurey using hybrid search
+- see exmaple: notebook/demo_hybrid_search_elasticsearch.ipynb
