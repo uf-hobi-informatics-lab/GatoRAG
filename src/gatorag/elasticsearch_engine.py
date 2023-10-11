@@ -192,15 +192,27 @@ class ElasticSearchEngine:
         Returns:
             Dict[str, object]: Hit results
         """
-        result = {
-            "meta": {
-                "total": es_res["hits"]["total"]["value"],
-                "took": es_res["took"],
-                "num_hits": len(hits),
-            },
-            "hits": hits,
-        }
+        if es_res:
+            result = {
+                "meta": {
+                    "total": es_res["hits"]["total"]["value"],
+                    "took": es_res["took"],
+                    "num_hits": len(hits),
+                },
+                "hits": hits,
+            }
+        else:
+            result = {
+                "meta": {
+                    "total": 0,
+                    "num_hits": len(hits),
+                },
+                "hits": hits,
+            }
         return result
+
+    def get_current_index_mapping(self):
+        return self.es.indices.get_mapping(index=self.index_name)[self.index_name]["mappings"]
 
     def get_query_embedding(self, query, embedding_method="bge"):
         if embedding_method == "bge":
@@ -214,8 +226,10 @@ class ElasticSearchEngine:
 
     def search(self, query, top_k, **kwargs):
         # add return field filter: we do not want to return any embeddings
-        fields = {k for k in self.mapping["mappings"]["properties"].keys() if "emb" not in k}
-        fields = [k for k in fields if k != "sparse_context"]
+        field_keys = self.get_current_index_mapping()["properties"].keys()
+        fields = {k for k in field_keys if "emb" not in k}
+        fields = [k for k in fields if k not in {"sparse_context", "refresh"}]
+
         query = {**query, "_source": fields}
 
         res = self.es.search(
